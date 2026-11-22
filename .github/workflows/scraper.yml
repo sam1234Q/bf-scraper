@@ -1,0 +1,98 @@
+name: Black Friday Deal & Coupon Scraper
+
+on:
+  # Run every 4 hours during Black Friday season (Nov 1 - Dec 5)
+  schedule:
+    - cron: '0 */4 * 11 *'   # Every 4 hours, all of November
+    - cron: '0 */4 1-5 12 *' # Every 4 hours, Dec 1-5
+    # During peak BF weekend (Thanksgiving-Cyber Monday), run every 2 hours
+    - cron: '0 */2 25-30 11 *'
+
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Scrape mode'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - deals-only
+          - coupons-only
+      sites:
+        description: 'Specific sites (comma-separated, leave empty for all)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run (no sheet write)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google credentials file
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > credentials.json
+
+      - name: Run scraper (scheduled - all deals + coupons)
+        if: github.event_name == 'schedule'
+        run: |
+          python scraper.py \
+            --sheet-id "${{ secrets.SHEET_ID || '1VJyOWfomUrkcBruveSjDeBSUAPynJqkudLn94HWWCp8' }}" \
+            --output-json deals_latest.json \
+            -v
+
+      - name: Run scraper (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          ARGS="--sheet-id ${{ secrets.SHEET_ID || '1VJyOWfomUrkcBruveSjDeBSUAPynJqkudLn94HWWCp8' }}"
+          ARGS="$ARGS --output-json deals_latest.json -v"
+
+          # Mode
+          if [ "${{ inputs.mode }}" = "coupons-only" ]; then
+            ARGS="$ARGS --coupons-only"
+          elif [ "${{ inputs.mode }}" = "deals-only" ]; then
+            ARGS="$ARGS --no-coupons"
+          fi
+
+          # Specific sites
+          if [ -n "${{ inputs.sites }}" ]; then
+            SITES=$(echo "${{ inputs.sites }}" | tr ',' ' ')
+            ARGS="$ARGS --sites $SITES"
+          fi
+
+          # Dry run
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+
+          python scraper.py $ARGS
+
+      - name: Upload deal results as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deals-${{ github.run_number }}
+          path: deals_latest.json
+          retention-days: 30
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f credentials.json

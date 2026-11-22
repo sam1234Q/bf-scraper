@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+credentials.json
+service_account.json
+deal_cache.json
+deals_*.json
