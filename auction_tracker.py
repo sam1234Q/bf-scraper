@@ -584,15 +584,21 @@ def run_tracker():
     now = datetime.now(CT)
     print(f"=== Texas Auction Tracker — {now.strftime('%Y-%m-%d %H:%M CT')} ===")
 
-    # Check if it's a weekday (Mon-Fri)
-    if now.weekday() >= 5:  # 5=Sat, 6=Sun
-        print("Weekend — skipping (Mon-Fri only)")
-        return
+    # Skip time/day checks if manually triggered (GITHUB_EVENT_NAME=workflow_dispatch)
+    manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
 
-    # Check hours (7 AM - 6 PM CT)
-    if not (7 <= now.hour < 18):
-        print(f"Outside hours ({now.hour}:00 CT) — skipping (7AM-6PM only)")
-        return
+    if not manual:
+        # Check if it's a weekday (Mon-Fri)
+        if now.weekday() >= 5:  # 5=Sat, 6=Sun
+            print("Weekend — skipping (Mon-Fri only)")
+            return
+
+        # Check hours (7 AM - 6 PM CT)
+        if not (7 <= now.hour < 18):
+            print(f"Outside hours ({now.hour}:00 CT) — skipping (7AM-6PM only)")
+            return
+    else:
+        print("Manual trigger — running regardless of day/time")
 
     print("Connecting to Google Sheet...")
     spreadsheet = get_sheet()
