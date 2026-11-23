@@ -1,0 +1,41 @@
+name: Texas Auction Tracker
+
+on:
+  schedule:
+    # Mon-Fri: 7AM, 10AM, 1PM, 4PM CT (13, 16, 19, 22 UTC)
+    - cron: '0 13 * * 1-5'
+    - cron: '0 16 * * 1-5'
+    - cron: '0 19 * * 1-5'
+    - cron: '0 22 * * 1-5'
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  scrape-auctions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write credentials file
+        run: |
+          echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > credentials.json
+
+      - name: Run auction tracker
+        env:
+          GOOGLE_CREDS_FILE: credentials.json
+        run: |
+          python auction_tracker.py
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f credentials.json
