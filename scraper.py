@@ -133,36 +133,324 @@ def calc_savings_pct(sale_price: str, reg_price: str) -> str:
 
 
 def categorize_deal(item_name: str) -> str:
-    """Guess the tab/category from the item name."""
+    """Guess the tab/category from the item name — expanded keyword lists."""
     name_lower = item_name.lower()
 
-    laptop_kw = ["laptop", "macbook", "chromebook", "notebook", "thinkpad", "ideapad", "pavilion"]
+    laptop_kw = [
+        "laptop", "macbook", "chromebook", "notebook", "thinkpad", "ideapad",
+        "pavilion", "probook", "elitebook", "spectre x360", "envy x360",
+        "surface laptop", "surface pro", "zenbook", "vivobook", "swift go",
+        "inspiron 14", "inspiron 15", "inspiron 16", "latitude", "xps 13",
+        "xps 14", "xps 15", "xps 16", "gram 14", "gram 15", "gram 16",
+        "macbook air", "macbook pro",
+    ]
     if any(kw in name_lower for kw in laptop_kw):
         return "Laptops"
 
-    pc_kw = ["desktop", "imac", "mac mini", "mac studio", "pc tower", "all-in-one"]
+    pc_kw = [
+        "desktop", "imac", "mac mini", "mac studio", "mac pro", "pc tower",
+        "all-in-one", "mini pc", "nuc", "optiplex", "precision tower",
+        "gaming pc", "gaming desktop",
+    ]
     if any(kw in name_lower for kw in pc_kw):
         return "Computers & Desktops"
 
-    shoe_kw = ["shoe", "sneaker", "boot", "sandal", "slipper", "nike", "adidas", "new balance",
-               "jordan", "puma", "reebok", "converse", "vans", "crocs"]
+    # Shoes BEFORE clothes — "nike" could be shoes or clothes, but shoes-specific
+    # keywords should take priority
+    shoe_kw = [
+        "shoe", "shoes", "sneaker", "sneakers", "boot", "boots", "sandal",
+        "sandals", "slipper", "slippers", "loafer", "loafers", "mule",
+        "trainer", "trainers", "running shoe", "walking shoe",
+        "air max", "air force 1", "air jordan", "dunk low", "dunk high",
+        "ultraboost", "superstar", "stan smith", "forum", "gazelle", "samba",
+        "new balance 574", "new balance 990", "new balance 550",
+        "crocs", "birkenstock", "ugg", "uggs", "heel", "heels", "pump",
+        "oxford", "derby", "clog", "clogs", "flip flop", "slide",
+        "runfalcon", "duramo", "gel-kayano", "gel-nimbus",
+        "footwear",
+    ]
     if any(kw in name_lower for kw in shoe_kw):
         return "Shoes"
 
-    clothes_kw = ["shirt", "jacket", "jeans", "pants", "hoodie", "sweater", "dress", "coat",
-                  "blazer", "polo", "shorts", "legging", "cardigan", "parka", "vest"]
-    if any(kw in name_lower for kw in clothes_kw):
+    clothes_kw = [
+        "shirt", "t-shirt", "tee", "polo", "blouse", "top",
+        "jacket", "jeans", "pants", "hoodie", "sweater", "sweatshirt",
+        "dress", "coat", "blazer", "shorts", "legging", "leggings",
+        "cardigan", "parka", "vest", "fleece", "pullover", "jogger",
+        "joggers", "tank top", "crew neck", "crewneck", "v-neck",
+        "puffer", "windbreaker", "tracksuit", "track pants",
+        "skirt", "romper", "jumpsuit", "overalls", "denim",
+        "underwear", "boxer", "bra", "pajama", "robe",
+        "beanie", "scarf", "gloves", "belt", "sock", "socks",
+        "apparel", "clothing", "activewear", "athleisure",
+        "levi's", "hanes", "champion", "fruit of the loom",
+        "old navy", "gap ", "uniqlo", "h&m", "zara",
+    ]
+    # Use word-boundary regex to avoid false matches like "steel" → "tee"
+    if any(re.search(r"\b" + re.escape(kw) + r"\b", name_lower) for kw in clothes_kw):
         return "Clothes"
 
-    perfume_kw = ["perfume", "cologne", "fragrance", "eau de", "toilette", "parfum"]
+    perfume_kw = [
+        "perfume", "cologne", "fragrance", "eau de", "toilette", "parfum",
+        "body spray", "body mist", "aftershave", "scent",
+        "versace", "dior sauvage", "bleu de chanel", "acqua di gio",
+        "ysl", "tom ford", "gucci guilty", "dolce & gabbana",
+        "fragrancenet", "sephora perfume",
+    ]
     if any(kw in name_lower for kw in perfume_kw):
         return "Perfume & Cologne"
 
-    glasses_kw = ["eyeglasses", "glasses", "rx", "frames", "lenses"]
+    glasses_kw = [
+        "eyeglasses", "glasses", "prescription", "rx ", " rx",
+        "frames", "lenses", "bifocal", "progressive",
+        "zenni", "eyebuydirect", "glassesusa", "warby parker",
+        "blue light", "reading glasses", "sunglasses",
+    ]
     if any(kw in name_lower for kw in glasses_kw):
         return "Eyeglasses (Rx)"
 
     return DEFAULT_TAB
+
+
+# ---------------------------------------------------------------------------
+# POST-PROCESSING — extract brand, store, prices from title text
+# ---------------------------------------------------------------------------
+KNOWN_BRANDS = [
+    # Electronics
+    "Apple", "Samsung", "Sony", "LG", "Dell", "HP", "Lenovo", "Asus", "Acer",
+    "Microsoft", "Google", "Amazon", "Bose", "JBL", "Beats", "Sennheiser",
+    "Canon", "Nikon", "GoPro", "Ring", "Roku", "TCL", "Hisense", "Vizio",
+    "Intel", "AMD", "Nvidia", "Logitech", "Razer", "Corsair", "SteelSeries",
+    "Western Digital", "Seagate", "SanDisk", "Kingston", "Crucial",
+    "Anker", "Belkin", "TP-Link", "Netgear", "Dyson", "iRobot", "Roomba",
+    "KitchenAid", "Ninja", "Instant Pot", "Keurig", "Cuisinart", "Vitamix",
+    "Xbox", "PlayStation", "Nintendo", "Garmin", "Fitbit",
+    # Shoes / Clothes
+    "Nike", "Adidas", "New Balance", "Jordan", "Puma", "Reebok", "Converse",
+    "Vans", "Crocs", "UGG", "Birkenstock", "Skechers", "ASICS", "Under Armour",
+    "Levi's", "Hanes", "Champion", "Columbia", "North Face", "Patagonia",
+    "Calvin Klein", "Ralph Lauren", "Tommy Hilfiger",
+    # Fragrance
+    "Versace", "Dior", "Chanel", "Gucci", "YSL", "Tom Ford",
+    "Dolce & Gabbana", "Burberry", "Prada", "Hugo Boss",
+    "FragranceNet",
+    # Eyewear
+    "Ray-Ban", "Oakley", "Zenni", "EyeBuyDirect", "GlassesUSA", "Warby Parker",
+    # Other
+    "LEGO", "Hasbro", "Mattel", "DeWalt", "Milwaukee", "Makita", "BLACK+DECKER",
+    "Shark", "Eufy", "Ecovacs", "Owala", "Stanley", "YETI", "Hydro Flask",
+]
+
+KNOWN_STORES = [
+    "Amazon", "Walmart", "Target", "Best Buy", "Costco", "Sam's Club",
+    "Home Depot", "Lowe's", "Macy's", "Nordstrom", "Kohl's", "JCPenney",
+    "Dick's Sporting", "Dicks Sporting", "REI", "Academy Sports",
+    "Newegg", "B&H Photo", "B&H", "Micro Center", "Microcenter",
+    "GameStop", "eBay", "Wayfair", "Overstock", "Zappos",
+    "Old Navy", "Gap", "Banana Republic", "Nike.com", "Adidas.com",
+    "SHEIN", "ASOS", "H&M", "Uniqlo", "Zara",
+    "Sephora", "Ulta", "Bath & Body Works",
+    "Lego.com", "Disney Store", "Apple Store",
+    "Woot", "Staples", "Office Depot", "Lenovo.com",
+    "Dell.com", "HP.com",
+]
+
+# Junk patterns — deals matching these are filtered out
+JUNK_PATTERNS = [
+    r"^#ERROR",
+    r"^Buy Now\b",
+    r"^Shop Now\b",
+    r"^Click Here\b",
+    r"^Sign Up\b",
+    r"\bbrokerage account\b",
+    r"\bcredit card\b",
+    r"\bbank account\b",
+    r"\bsign[- ]?up bonus\b",
+    r"\bcashback reward\b",
+    r"\bWin up to\b",
+    r"\bGift Card\b.*\bWin\b",
+    r"^Get up to \$[\d,]+ (?:bonus|reward)",
+    r"\bNew .+ account\b.*\bget\b",
+    r"\bRefer a friend\b",
+    r"\bfree trial\b",
+    r"\bsubscription\b.*\bfree month",
+    r"-- Plus, Win",
+    r"is Here --",
+    r"^Save on\s",  # generic headlines like "Save on Electronics"
+    r"^Top \d+ ",   # "Top 10 Black Friday Deals" = article, not a deal
+    r"^Best \d+ ",  # "Best 25 Deals" = article
+]
+
+JUNK_PATTERNS_COMPILED = [re.compile(p, re.IGNORECASE) for p in JUNK_PATTERNS]
+
+
+def is_junk_deal(deal: dict) -> bool:
+    """Return True if this deal is junk (financial promo, article headline, etc)."""
+    title = deal.get("item", "")
+    if not title or len(title) < 5:
+        return True
+    for pat in JUNK_PATTERNS_COMPILED:
+        if pat.search(title):
+            return True
+    # No price at all and title is very short or generic
+    if not deal.get("sale_price") and len(title) < 25:
+        return True
+    return False
+
+
+def extract_brand(title: str) -> str:
+    """Extract brand name from deal title by matching known brands."""
+    title_lower = title.lower()
+    best_match = ""
+    best_pos = len(title)
+    for brand in KNOWN_BRANDS:
+        # Word-boundary match so "Hanes" doesn't match inside "changes"
+        pattern = re.compile(r'\b' + re.escape(brand) + r'\b', re.IGNORECASE)
+        m = pattern.search(title)
+        if m and m.start() < best_pos:
+            best_match = brand
+            best_pos = m.start()
+    return best_match
+
+
+def extract_store_from_title(title: str) -> str:
+    """Extract store name from patterns like 'at Amazon', '@ Home Depot', 'from Walmart'."""
+    # Try "at Store", "@ Store", "from Store", "via Store"
+    for prep in [r"\bat\b", r"@", r"\bfrom\b", r"\bvia\b"]:
+        for store in KNOWN_STORES:
+            pattern = re.compile(
+                prep + r"\s+" + re.escape(store), re.IGNORECASE
+            )
+            if pattern.search(title):
+                return store
+    # Also check if the title starts with a store name
+    title_stripped = title.strip()
+    for store in KNOWN_STORES:
+        if title_stripped.lower().startswith(store.lower()):
+            return store
+    return ""
+
+
+def extract_prices_from_title(title: str) -> tuple[str, str]:
+    """Extract sale price and regular price from title text.
+
+    Returns (sale_price, regular_price).
+    Handles patterns like:
+        "$299.99 (reg $399.99)"
+        "$50 (was $80)"
+        "$99.99 - $10 Rebate = $89.99"
+        "Save $100 on ... $299 (orig $399)"
+        "$29.92: Yooka-Replaylee"
+        "... $22.50 + Free Shipping"
+    """
+    # Clean price string to float
+    def to_float(p):
+        try:
+            return float(p.replace("$", "").replace(",", ""))
+        except ValueError:
+            return 0.0
+
+    # --- Handle "= $X" rebate pattern FIRST ---
+    # e.g. "$99.99 - $10 Rebate = $89.99" → sale=$89.99, reg=$99.99
+    equals_match = re.search(r"=\s*(\$[\d,]+\.?\d*)", title)
+    if equals_match:
+        final_price = equals_match.group(1)
+        all_prices = re.findall(r"\$[\d,]+\.?\d*", title)
+        all_vals = [(p, to_float(p)) for p in all_prices if to_float(p) > 0]
+        if len(all_vals) >= 2:
+            reg_price = max(all_vals, key=lambda x: x[1])[0]
+            if to_float(reg_price) > to_float(final_price):
+                return (final_price, reg_price)
+        return (final_price, "")
+
+    # --- Strip shipping thresholds before finding prices ---
+    # e.g. "Free Shipping w/ Prime or on $35+" — $35+ is NOT a price
+    cleaned_title = re.sub(r"(?:on|over|orders?|shipping)\s+\$[\d,]+\.?\d*\+", "", title, flags=re.IGNORECASE)
+    cleaned_title = re.sub(r"\$[\d,]+\.?\d*\+", "", cleaned_title)
+
+    # Find ALL dollar amounts in the cleaned title
+    prices = re.findall(r"\$[\d,]+\.?\d*", cleaned_title)
+    if not prices:
+        return ("", "")
+
+    price_vals = [(p, to_float(p)) for p in prices]
+    price_vals = [(p, v) for p, v in price_vals if v > 0]
+
+    if not price_vals:
+        return ("", "")
+
+    # Look for explicit "reg", "was", "orig", "normally", "regular", "msrp", "list"
+    reg_match = re.search(
+        r"(?:reg(?:ular)?|was|orig(?:inally)?|normally|msrp|list(?:\s+price)?|retail)\s*:?\s*(\$[\d,]+\.?\d*)",
+        cleaned_title, re.IGNORECASE
+    )
+    reg_price = ""
+    if reg_match:
+        reg_price = reg_match.group(1)
+        # The sale price is the smallest non-reg price
+        sale_candidates = [p for p, v in price_vals if p != reg_price]
+        if sale_candidates:
+            sale_price = min(sale_candidates, key=lambda x: to_float(x))
+        else:
+            sale_price = price_vals[0][0]
+        return (sale_price, reg_price)
+
+    # If 2+ prices and no explicit marker, largest = regular, smallest = sale
+    if len(price_vals) >= 2:
+        sorted_prices = sorted(price_vals, key=lambda x: x[1])
+        sale_price = sorted_prices[0][0]
+        reg_price = sorted_prices[-1][0]
+        # Only if reg is meaningfully higher (at least 10% more)
+        if sorted_prices[-1][1] > sorted_prices[0][1] * 1.10:
+            return (sale_price, reg_price)
+
+    # Single price — it's the sale price, no regular price known
+    return (price_vals[0][0], "")
+
+
+def postprocess_deals(deals: list[dict]) -> list[dict]:
+    """Post-process all deals: extract brand, store, prices; filter junk; re-categorize."""
+    cleaned = []
+    for d in deals:
+        # Skip coupon entries — they don't need this processing
+        if d.get("category") == "ALL COUPON CODES":
+            cleaned.append(d)
+            continue
+
+        # --- Bug 5: Filter junk ---
+        if is_junk_deal(d):
+            log.debug(f"Filtered junk: {d.get('item', '')[:60]}")
+            continue
+
+        title = d.get("item", "")
+
+        # --- Bug 1: Extract brand ---
+        if not d.get("brand"):
+            d["brand"] = extract_brand(title)
+
+        # --- Bug 2: Extract store from title if missing ---
+        if not d.get("store"):
+            d["store"] = extract_store_from_title(title)
+
+        # --- Bug 3 & 7: Extract / fix prices from title ---
+        title_sale, title_reg = extract_prices_from_title(title)
+        if not d.get("sale_price") and title_sale:
+            d["sale_price"] = title_sale
+        if not d.get("regular_price") and title_reg:
+            d["regular_price"] = title_reg
+
+        # --- Bug 4: Compute savings % if we now have both prices ---
+        if not d.get("savings_pct") and d.get("sale_price") and d.get("regular_price"):
+            d["savings_pct"] = calc_savings_pct(d["sale_price"], d["regular_price"])
+
+        # --- Bug 6: Re-categorize if still "Other" ---
+        if d.get("category", DEFAULT_TAB) == DEFAULT_TAB:
+            d["category"] = categorize_deal(title)
+
+        cleaned.append(d)
+
+    log.info(f"Post-processing: {len(deals)} in → {len(cleaned)} out ({len(deals) - len(cleaned)} junk filtered)")
+    return cleaned
 
 
 # ---------------------------------------------------------------------------
@@ -2001,6 +2289,9 @@ def run_scraper(
     # Dedup
     all_deals = dedup_deals(all_deals)
     log.info(f"Total unique deals after dedup: {len(all_deals)}")
+
+    # Post-process: extract brand, store, prices; filter junk; fix categories
+    all_deals = postprocess_deals(all_deals)
 
     # Category filter
     if category_filter:
